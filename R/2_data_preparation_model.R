@@ -61,6 +61,10 @@ allAges_weekly_ser1 <- dplyr::left_join(
     yearWeek = as.Date(yearWeek),
     day = as.numeric(round((yearWeek - (as.Date("2003-01-01")-2)))), # min(dat_g$Earliest.specimen.date)-2 to make it 7
     
+    # fill in NAs
+    # count_s1_1 = ifelse(is.na(count_s1_1), 0, count_s1_1),
+    # count_s1_2 = ifelse(is.na(count_s1_2), 0, count_s1_2),
+    
     # adjust burn in
     day = burnin_days+day,
     count_s1_1 = ifelse(dplyr::row_number() == 1, NA, count_s1_1),

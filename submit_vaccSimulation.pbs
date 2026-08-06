@@ -1,0 +1,27 @@
+#!/bin/bash
+
+#PBS -N vSimulation
+#PBS -l walltime=72:00:00
+#PBS -l select=1:ncpus=32:mem=1500gb
+
+# https://icl-rcs-user-guide.readthedocs.io/en/latest/hpc/pilot/cx3-phase2/#job-sizing-guidance
+
+source ~/anaconda3/etc/profile.d/conda.sh
+
+cd $PBS_O_WORKDIR
+sleep 1
+conda run -n R_envConda Rscript "$HOME/Strep_postThesis/model/sir_stochastic_ageGroup2_2post_pmcmc_picts_simulations.R" \
+    --year 2003
+
+sleep 1
+conda run -n R_envConda Rscript "$HOME/Strep_postThesis/model/sir_stochastic_ageGroup2_2post_pmcmc_picts_simulations.R" \
+    --year 2006
+
+sleep 1
+conda run -n R_envConda Rscript "$HOME/Strep_postThesis/model/sir_stochastic_ageGroup2_2post_pmcmc_picts_simulations.R" \
+    --year 2010
+
+sleep 1
+conda run -n R_envConda Rscript "$HOME/Strep_postThesis/model/sir_stochastic_ageGroup2_2post_pmcmc_picts_simulations.R" \
+    --year 2023
+

@@ -11,7 +11,8 @@ time_shift_1 <- user(0, min = 0)
 beta_0 <- user(0, min = 0)
 beta_1 <- user(0, min = 0, max = 1)
 # theta <- 0.19 # proportion of vaccinated children in 0-14 age group
-theta <- (time-(burnin_days+2648))/(14*365)
+vaccIntro <- user() # 2648 days (April 2010) from Jan 2003 time point
+theta <- (time-(burnin_days+vaccIntro))/(14*365)
 
 UK_calibration_kids <- 1.07638532472038 # FIXED (Lochen et al., 2022)
 UK_calibration_adults <- 0.536936186788821 # FIXED (Lochen et al., 2022)
@@ -154,7 +155,7 @@ m[, ] <- user() # age-structured contact matrix
 # vacc must be defined as coverage*efficacy*proportion of kids 2y.o.*theta (theta as gradual vaccination)
 # 0.9*efficacy*0.19*theta
 vacc <- user(0, min = 0, max = 1)
-v[1] <- (if (time >= (burnin_days+2648)*freq)
+v[1] <- (if (time >= (burnin_days+vaccIntro)*freq)
   vacc*theta
   else
     vacc*0
@@ -171,7 +172,7 @@ beta <- (if (time < 0) beta_0 else
   (beta_0*((1+beta_1*cos(2*pi*((time_shift_1*(365))+time)/(365))))) else
     (beta_0*((1+beta_1*beta_diff*cos(2*pi*((time_shift_1*(365))+time)/(365)))))))
 
-# foi_ij[, ] <- (if (time >= (burnin_days+2648)*freq)
+# foi_ij[, ] <- (if (time >= (burnin_days+vaccIntro)*freq)
 #   beta * m[i, j] * (((A[j] + D[j])/N[j]) * (1 - vacc_m[i, j]))
 #   else
 #     beta * m[i, j] * (((A[j] + D[j])/N[j]))

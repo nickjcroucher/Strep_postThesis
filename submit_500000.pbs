@@ -2,7 +2,7 @@
 
 #PBS -N Det1_500000
 #PBS -l walltime=72:00:00
-#PBS -l select=1:ncpus=32:mem=900gb
+#PBS -l select=1:ncpus=32:mem=1500gb
 
 # https://icl-rcs-user-guide.readthedocs.io/en/latest/hpc/pilot/cx3-phase2/#job-sizing-guidance
 
@@ -11,8 +11,8 @@ source ~/anaconda3/etc/profile.d/conda.sh
 cd $PBS_O_WORKDIR
 steps_folder=500000 # no space
 conda run -n R_envConda Rscript "$HOME/Strep_postThesis/R/3_pmcmc.R" \
-    --mode run_all \
-    --n_particles 500 --n_steps "$steps_folder" \
+    --mode pmcmc2 \
+    --n_particles 10 --n_steps "$steps_folder" \
     --run1_stochastic false --run2_stochastic false \
     --ncpus 32 \
     > "$HOME/Strep_postThesis/myresult.txt"
@@ -32,5 +32,5 @@ conda run -n R_envConda Rscript "$HOME/Strep_postThesis/R/5_post_pmcmc_samples_p
 sleep 1
 conda run -n R_envConda Rscript "$HOME/Strep_postThesis/R/6_post_pmcmc_age_validation.R" \
     --n_steps "$steps_folder"
-    
+
 printenv > "$HOME/Strep_postThesis/myenv.txt"

@@ -11,19 +11,22 @@ post_particle_pics <- function(n_sts){
   pmcmc_samples$trajectories$state <- observe(pmcmc_samples)
   
   data <- readRDS("raw_data/pmcmc_data_week_allAge_ser1_test_2agegroups.rds")
-  initial_pars <- read.csv(paste0(dir_name, "initial.csv"))
-  priors <- prepare_priors(initial_pars)
   
-  png(paste0(dir_name, "figs/particles_posteriors_%02d.png"),
-      width = 24, height = 17, unit = "cm", res = 600)
-  par(mfrow = c(3, 3), mar = c(3, 3, 1, 1), mgp = c(1.7, 0.7, 0), bty = "n")
-  for (nm in names(initial_pars)) {
-    hist(pmcmc_samples$pars[, nm], xlab = nm, main = "", freq = FALSE)
-    if (nm %in% names(priors)) {
-      curve(exp(priors[[nm]](x)), add = TRUE, col = 2)
+  if(file.exists(file.path(paste0(dir_name, "tune_initial.csv")))){
+    initial_pars <- read.csv(paste0(dir_name, "tune_initial.csv"))
+    priors <- prepare_priors(initial_pars)
+    
+    png(paste0(dir_name, "figs/particles_posteriors_%02d.png"),
+        width = 24, height = 17, unit = "cm", res = 600)
+    par(mfrow = c(3, 3), mar = c(3, 3, 1, 1), mgp = c(1.7, 0.7, 0), bty = "n")
+    for (nm in names(initial_pars)) {
+      hist(pmcmc_samples$pars[, nm], xlab = nm, main = "", freq = FALSE)
+      if (nm %in% names(priors)) {
+        curve(exp(priors[[nm]](x)), add = TRUE, col = 2)
+      }
     }
+    dev.off()
   }
-  dev.off()
   
   png(paste0(dir_name, "figs/particles_fits_%02d.png"),
       width = 17, height = 17, unit = "cm", res = 600)

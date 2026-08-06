@@ -8,18 +8,26 @@ source("global/all_function_allAge.R")
 # global/all_function_allAge.R also incorporated:
 # burnin_days
 
-
-model_vs_data <- function(n_sts){
-  dir_name <- paste0("outputs/genomics/trial_", n_sts, "/")
+vaccine_simulation <- function(vaccYear){
+  dir_name <- paste0("outputs/genomics/trial_", 500000, "/")
   dir.create(paste0(dir_name, "/figs"), FALSE, TRUE)
   # run 4_post_pmcmc_pics.R first
   results <- read.csv(paste0(dir_name, "tune_initial_with_CI.csv"),
                       row.names = 1) %>% 
     glimpse()
   
+  # adjust year <-> days based on vaccYear
+  vdays <- switch(
+    as.character(vaccYear),
+    "2003" = 0,
+    "2006" = 1339,
+    "2010" = 2648,
+    "2023" = 7364, # basically no vaccine being introduced
+    stop("Invalid year")
+  )
   
   # gen_sir <- odin.dust::odin_dust("model/sir_basic_trial.R")
-  gen_sir <- odin.dust::odin_dust("model/sir_stochastic_ageGroup2.R")
+  gen_sir <- odin.dust::odin_dust("model/sir_stochastic_ageGroup2_adjusted_vacc.R")
   
   # Create contact_matrix 5 demographic groups:
   # > 5
@@ -49,6 +57,7 @@ model_vs_data <- function(n_sts){
   
   pars <- list(m = t_norm,
                N_ini = contact_2_demographic$demography$population,
+               vaccIntro = as.numeric(vdays),
                log_A_ini = results["log_A_ini",2], # c(results[1,2], results[2,2]),
                phi = results["phi",2],
                time_shift_1 = results["time_shift_1",2],
@@ -62,32 +71,19 @@ model_vs_data <- function(n_sts){
                omega = results["omega",2]
   )
   
-  n_times <- burnin_days+7500 # 500 for trial
-  n_pars <- 1L
+  n_times <- burnin_days+7500
+  n_pars <- 10000L
   sir_model <- gen_sir$new(pars = pars,
                            time = 1,
                            n_particles = n_pars,
                            n_threads = 4L,
                            seed = 1L)
   
-  # compartment position check
-  # sir_model$info()
-  # sir_model$info()$index$n_AD_weekly
-  # update_state is required "every single time" to run & produce matrix output (don't know why)
-  # sir_model$update_state(pars = pars,
-  #                        time = 0) # make sure time is 0
-  
-  # all_date <- incidence$day
-  # all_date <- data.frame(col = integer(4745))
-  # incidence <- read.csv("inputs/incidence_week_12F_allAge.csv") %>% 
-  #   dplyr::mutate(day = week*7) 
   model <- array(NA, dim = c(sir_model$info()$len, n_pars, n_times))
   
   for (t in seq_len(n_times)) {
     model[ , , t] <- sir_model$run(t)
   }
-  # time <- x[1, 1, ] # because in the position of [1, 1, ] is time
-  # x <- x[-1, , ] # compile all matrix into 1 huge df, delete time (position [-1, , ])
   
   data <- readRDS("raw_data/pmcmc_data_week_allAge_ser1_test_2agegroups.rds") %>% 
     glimpse()
@@ -115,12 +111,6 @@ model_vs_data <- function(n_sts){
                     fill = list(value = 0)) %>% 
     glimpse()
   
-  
-  # all_dates <- data.frame(date = seq(min(data$yearWeek), max(data$yearWeek), by = "day")) %>%
-  #   dplyr::mutate(
-  #     steps = seq_along(date)
-  #   ) %>%
-  #   glimpse()
   all_dates <- data %>%
     dplyr::select(yearWeek) %>% 
     dplyr::mutate(
@@ -138,7 +128,7 @@ model_vs_data <- function(n_sts){
     # adjust burn in
     dplyr::filter(steps > burnin_days) %>% 
     dplyr::mutate(steps = steps-burnin_days) %>% 
-    # dplyr::filter(index < 5) %>%
+    # dplyr::filter(index > 8) %>%
     dplyr::mutate(compartment = 
                     dplyr::case_when(index == 1 ~ "Time",
                                      index == 2 ~ "total N",
@@ -149,8 +139,8 @@ model_vs_data <- function(n_sts){
                                      index == 7 ~ "n_AD1_weekly",
                                      index == 8 ~ "n_AD2_weekly",
                                      
-                                     index == 9 ~ "S <15",
-                                     index == 10 ~ "S 15+",
+                                     index == 9 ~ "model_S1",
+                                     index == 10 ~ "model_S2",
                                      index == 11 ~ "A <15",
                                      index == 12 ~ "A 15+",
                                      index == 13 ~ "model_D1",
@@ -158,6 +148,7 @@ model_vs_data <- function(n_sts){
                                      index == 15 ~ "R <15",
                                      index == 16 ~ "R 15+"
                     )) %>% 
+    dplyr::filter(index > 8) %>%
     dplyr::select(-index) %>%
     dplyr::mutate(weekly = ceiling((steps-1)/7)) %>% 
     dplyr::group_by(replicate, weekly, compartment) %>% 
@@ -174,32 +165,132 @@ model_vs_data <- function(n_sts){
       ,
       by = "weekly"
     ) %>%
-    dplyr::filter(!is.na(yearWeek)) %>%
+    dplyr::filter(!is.na(yearWeek)) # %>%
+  # glimpse()
+  
+  # group_by weekly, compartment and calculate median for ALL simulated particles
+  incidence_modelled_med <- incidence_modelled %>% 
+    dplyr::filter(
+      compartment %in% c("model_D1")
+    ) %>% 
+    dplyr::group_by(yearWeek) %>% 
+    dplyr::summarise(
+      model_D1_med = median(value),
+      model_D1_lo  = quantile(value, 0.025),
+      model_D1_up  = quantile(value, 0.975),
+      
+      .groups = "drop"
+    ) %>% 
+    dplyr::full_join(
+      incidence_modelled %>% 
+        dplyr::filter(
+          compartment %in% c("model_D2")
+        ) %>% 
+        dplyr::group_by(yearWeek) %>% 
+        dplyr::summarise(
+          model_D2_med = median(value),
+          model_D2_lo  = quantile(value, 0.025),
+          model_D2_up  = quantile(value, 0.975),
+          
+          .groups = "drop"
+        )
+      ,
+      by = "yearWeek"
+    ) %>% 
+    # combine with S
+    dplyr::full_join(
+      incidence_modelled %>% 
+        dplyr::filter(
+          compartment %in% c("model_S1")
+        ) %>% 
+        dplyr::group_by(yearWeek) %>% 
+        dplyr::summarise(
+          model_S1_med = median(value),
+          model_S1_lo  = quantile(value, 0.025),
+          model_S1_up  = quantile(value, 0.975),
+          
+          .groups = "drop"
+        )
+      ,
+      by = "yearWeek"
+    ) %>% 
+    dplyr::full_join(
+      incidence_modelled %>% 
+        dplyr::filter(
+          compartment %in% c("model_S2")
+        ) %>% 
+        dplyr::group_by(yearWeek) %>% 
+        dplyr::summarise(
+          model_S2_med = median(value),
+          model_S2_lo  = quantile(value, 0.025),
+          model_S2_up  = quantile(value, 0.975),
+          
+          .groups = "drop"
+        )
+      ,
+      by = "yearWeek"
+    ) %>% 
+    tidyr::pivot_longer(
+      cols = contains("model_"),
+      names_to = "compartment",
+      values_to = "value"
+    ) %>% 
     glimpse()
   
-  write.csv(incidence_modelled,
-            paste0(dir_name, "incidence_modelled_serotype1.csv"),
+  # combine median back to incidence_modelled
+  incidence_modelled2 <- dplyr::bind_rows(
+    incidence_modelled,
+    incidence_modelled_med
+  ) %>% 
+    tidyr::pivot_wider(
+      id_cols = c("yearWeek", "replicate"),
+      names_from = compartment,
+      values_from = value,
+      # values_fill = 0
+    ) %>% 
+    glimpse()
+  
+  # save ONLY the med df
+  write.csv(incidence_modelled_med,
+            paste0(dir_name, "incidence_modelled_serotype1_median_simulated_", vaccYear, ".csv"),
             row.names = FALSE)
   
-  png(paste0(dir_name, "figs/model_vs_data_ageGroups1.png"),
-      width = 24, height = 34, unit = "cm", res = 600)
-  p1 <- ggplot(incidence_modelled %>% 
-                 dplyr::filter(
-                   compartment %in% c("model_D1", "data_count_s1_1"),
-                   compartment != "Time",
-                 )
+  png(paste0(dir_name, "figs/model_vs_data_ageGroups1_median_simulated_", vaccYear, ".png"),
+      width = 24, height = 14, unit = "cm", res = 600)
+  p1 <- ggplot(incidence_modelled2
                ,
-               aes(x = yearWeek, y = value,
-                   group = interaction(compartment,replicate),
-                   colour = compartment)) +
-    geom_line() +
-    geom_vline(aes(xintercept = as.Date("2010-04-01"),
-                   colour = "PCV13 (April 2010)"),
-               linetype = "dashed") +
+               aes(x = yearWeek,
+                   group = interaction(replicate))) +
+    geom_line(aes(y = model_D1,
+                  colour = "Simulated results"),
+              linewidth = 0.01,
+              alpha = 0.1
+    ) +
+    # geom_ribbon(
+    #   aes(ymin = model_D1_lo, ymax = model_D1_up),
+    #   # fill = "steelblue",
+    #   alpha = 0.01
+    # ) +
+    geom_line(aes(y = data_count_s1_1,
+                  colour = "Cases")
+    ) +
+    geom_line(aes(y = model_D1_med,
+                  colour = "Median"),
+              linewidth = 0.75
+    ) +
+    scale_y_continuous(
+      limits = c(0, 20)
+    ) +
     scale_x_date(limits = c(as.Date(min(all_dates$yearWeek)), as.Date(max(all_dates$yearWeek))),
                  date_breaks = "year",
                  date_labels = "%Y") +
-    ggtitle("Cases (Aggregated by Week) for age 0-14") +
+    scale_colour_manual(
+      values = c("Simulated results" = "grey40",
+                 "Median" = "black",
+                 "Cases" = "#FF7F00"
+      )
+    ) +
+    ggtitle(paste0("Simulated cases for vaccine introduction in ", vaccYear, " in age group 0-14")) +
     xlab("Time") +
     ylab("Number of People") +
     theme_bw() +
@@ -209,20 +300,40 @@ model_vs_data <- function(n_sts){
           legend.text = element_text(size = 10),
           legend.background = element_rect(fill = "transparent", color = "transparent"))
   
-  p2 <- ggplot(incidence_modelled %>% 
-                 dplyr::filter(
-                   compartment %in% c("model_D2", "data_count_s1_2"),
-                   compartment != "Time",
-                 )
+  p2 <- ggplot(incidence_modelled2
                ,
-               aes(x = yearWeek, y = value,
-                   group = interaction(compartment,replicate),
-                   colour = compartment)) +
-    geom_line() +
+               aes(x = yearWeek,
+                   group = interaction(replicate))) +
+    geom_line(aes(y = model_D2,
+                  colour = "Simulated results"),
+              linewidth = 0.01,
+              alpha = 0.1
+    ) +
+    # geom_ribbon(
+    #   aes(ymin = model_D2_lo, ymax = model_D2_up),
+    #   # fill = "steelblue",
+    #   alpha = 0.01
+    # ) +
+    geom_line(aes(y = data_count_s1_2,
+                  colour = "Cases")
+    ) +
+    geom_line(aes(y = model_D2_med,
+                  colour = "Median"),
+              linewidth = 0.75
+    ) +
+    scale_y_continuous(
+      limits = c(0, 50)
+    ) +
     scale_x_date(limits = c(as.Date(min(all_dates$yearWeek)), as.Date(max(all_dates$yearWeek))),
                  date_breaks = "year",
                  date_labels = "%Y") +
-    ggtitle("Cases (Aggregated by Week) for age 15+") +
+    scale_colour_manual(
+      values = c("Simulated results" = "grey40",
+                 "Median" = "black",
+                 "Cases" = "#FF7F00"
+      )
+    ) +
+    ggtitle(paste0("Simulated cases for vaccine introduction in ", vaccYear, " in age group 15+")) +
     xlab("Time") +
     ylab("Number of People") +
     theme_bw() +
@@ -244,7 +355,7 @@ model_vs_data <- function(n_sts){
 
 # a slight modification for college's HPC
 args <- commandArgs(trailingOnly = T)
-n_sts <- as.numeric(args[which(args == "--n_steps") + 1])
+vaccYear <- as.numeric(args[which(args == "--year") + 1])
 
-model_vs_data(n_sts)
+vaccine_simulation(vaccYear)
 

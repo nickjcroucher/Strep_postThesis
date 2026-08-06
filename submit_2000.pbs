@@ -11,7 +11,7 @@ source ~/anaconda3/etc/profile.d/conda.sh
 cd $PBS_O_WORKDIR
 steps_folder=2000 # no space
 conda run -n R_envConda Rscript "$HOME/Strep_postThesis/R/3_pmcmc.R" \
-    --mode run_all \
+    --mode pmcmc2 \
     --n_particles 500 --n_steps "$steps_folder" \
     --run1_stochastic false --run2_stochastic false \
     --ncpus 16 \
